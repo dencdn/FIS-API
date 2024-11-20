@@ -26,6 +26,15 @@ app.use(express.json())
 app.use((req, res, next) => {
    next() 
 })
+
+app.get('/status', (req, res) => {
+  res.status(200).json({
+      status: 'success',
+      message: 'Service is up and running!',
+      timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/logout', (req, res) => {
   res.clearCookie('token', { path: '/' });
   res.status(200).json({message: "cleared"})
