@@ -1,0 +1,16 @@
+
+# Ignore environment variables
+.env
+
+# Ignore node_modules
+node_modules/
+
+# Ignore logs
+*.log
+
+# Ignore build files
+dist/
+build/
+
+financial-information-system-firebase-adminsdk-c9w4k-84d64b08dd.json
+financial-information-system-cbcf6209b8cf.json
