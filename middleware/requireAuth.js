@@ -11,6 +11,7 @@ const requireAuth = async (req, res, next) => {
         token = authHeader.split(' ')[1];
     }
     try{
+        console.log('hit')
         const decodedToken = await admin.auth().verifyIdToken(token);
         req.user = {
             name: decodedToken.dispName,
@@ -22,6 +23,7 @@ const requireAuth = async (req, res, next) => {
         
         next()
     }catch(error){
+        console.log('require auth', error)
         return res.status(401).json({ success: false, message: 'Unauthorized: Invalid Token' });
     }
 

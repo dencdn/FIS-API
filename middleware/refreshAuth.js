@@ -21,7 +21,7 @@ const refreshAuth = async (req, res, next) => {
         
         next()
     }catch(error){
-        console.log("EXPIRED TOKEN, CAN'T VERIFY!!!!!")
+        console.log("EXPIRED TOKEN, CAN'T VERIFY!!!!!", error)
         return res.status(401).json({ success: false, message: 'Unauthorized: Invalid Token' });
     }
 
