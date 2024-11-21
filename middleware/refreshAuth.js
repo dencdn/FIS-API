@@ -8,7 +8,9 @@ const refreshAuth = async (req, res, next) => {
     }
     token = authHeader.split(' ')[1];
     try{
+        console.log(token)
         const decodedToken = await admin.auth().verifyIdToken(token);
+        console.log(decodedToken)
         req.user = {
             name: decodedToken.dispName,
             uid: decodedToken.uid,

@@ -1,7 +1,7 @@
 const {admin}  = require('../config/firebase')
 const login = (req, res) => {
     try{
-        
+        console.log('logged in')
         const role = req.user.role
         const token = req.user.token;
         const name = req.user.name;
@@ -24,6 +24,7 @@ const login = (req, res) => {
 
 const refreshToken = (req, res) => {
     try{
+        console.log('refreshing token')
         const refreshTime = new Date().toISOString(); //for check time only
         const role = req.user.role
         const token = req.user.token;
