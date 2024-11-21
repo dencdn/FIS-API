@@ -17,7 +17,7 @@ const EditorOperatorRouter = require('./routes/editorOperatorRoutes')
 const app = express()
 
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: 'https://fis-railway-production.up.railway.app',
   credentials: true
 }))
 
