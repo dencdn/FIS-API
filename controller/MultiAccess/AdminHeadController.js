@@ -18,21 +18,15 @@ const getForecastedValues = async(req, res) => {
 
 const getPercentageForMonth = async(req, res) => {
   try{
-    const {year, month} = req.body
-    const colRef = db.collection('CategoryPerMonth').doc(`${month}-${year}`).collection('collectedCategory')
-    const colSnapshot = await colRef.get()
-
-    const categoryData = {}
-    if(colSnapshot.empty){
-      console.log('No matching documents.');
-      return res.status(404).json(categoryData)
+    const {month, year, amount} = req.body
+    const awsAPI_URL = process.env.AWS_API_URL
+    const data = {
+      month: month,
+      year: year,
+      amount: amount
     }
-
-    colSnapshot.forEach((doc) => {
-      categoryData[doc.id] = doc.data()
-    })
-
-    res.status(200).json(categoryData)
+    const response = await axios.post(`${awsAPI_URL}/clasify`, data);
+    res.status(200).json(response.data)
 
   }catch(error){
     console.log('error getting percentage for this month', error)

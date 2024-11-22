@@ -8,9 +8,7 @@ const refreshAuth = async (req, res, next) => {
     }
     token = authHeader.split(' ')[1];
     try{
-        console.log(token)
         const decodedToken = await admin.auth().verifyIdToken(token);
-        console.log(decodedToken)
         req.user = {
             name: decodedToken.dispName,
             uid: decodedToken.uid,
@@ -21,7 +19,7 @@ const refreshAuth = async (req, res, next) => {
         
         next()
     }catch(error){
-        console.log("EXPIRED TOKEN, CAN'T VERIFY!!!!!", error)
+        console.log("EXPIRED TOKEN, CAN'T VERIFY!!!!!")
         return res.status(401).json({ success: false, message: 'Unauthorized: Invalid Token' });
     }
 

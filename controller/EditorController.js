@@ -87,8 +87,8 @@ const createDV = async (req, res) => {
             [DVKey]: dvData
         }
 
-        addOnCategoryPerMonth(amount, optionalAmount, accCategory, date)
-        addOnClusterAmount(amount, fund, date)
+        // addOnCategoryPerMonth(amount, optionalAmount, accCategory, date)
+        // addOnClusterAmount(amount, fund, date)
 
         return res.status(200).json(document);
 
@@ -220,8 +220,8 @@ const deleteDV = async(req, res) => {
             const date = recordData['date']
             const accCategory = recordData['accCategory']
             const fund = recordData['fund']
-            await addOnCategoryPerMonth(amount, optionalAmount, accCategory, date, 'subtract')
-            await addOnClusterAmount(amount, fund, date, 'subtract')
+            // await addOnCategoryPerMonth(amount, optionalAmount, accCategory, date, 'subtract')
+            // await addOnClusterAmount(amount, fund, date, 'subtract')
 
             await db.collection('records').doc(id).delete();
             res.status(200).json({ message: 'Document successfully deleted' })
@@ -484,36 +484,36 @@ const addOnCategoryPerMonth = async (amount, optionalAmount, accCategory, dateSt
     }
 }
 
-const addOnClusterAmount = async (amount, cluster, dateString, operation='add') => {
-    try{
-        const float_amount = parseFloat(amount)
+// const addOnClusterAmount = async (amount, cluster, dateString, operation='add') => {
+//     try{
+//         const float_amount = parseFloat(amount)
 
-        const date = new Date(dateString);
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
+//         const date = new Date(dateString);
+//         const year = date.getFullYear();
+//         const month = String(date.getMonth() + 1).padStart(2, '0');
 
-        const clusterMapping = {
-            "501 COB": "COB",
-            "501 LFP": "LFP",
-            "501 CARP": "CARP",
-            "Contract Farming": "CF"
-        };
+//         const clusterMapping = {
+//             "501 COB": "COB",
+//             "501 LFP": "LFP",
+//             "501 CARP": "CARP",
+//             "Contract Farming": "CF"
+//         };
 
-        const cluster_mapped = clusterMapping[cluster]
+//         const cluster_mapped = clusterMapping[cluster]
 
-        const docRef = db.collection('AmountRecord').doc(`${year}-${month}`)
-        const docSnapshot = await docRef.get()
-        const existing_amount = docSnapshot.exists ? parseFloat(docSnapshot.data()[cluster_mapped]) || 0 : 0
+//         const docRef = db.collection('AmountRecord').doc(`${year}-${month}`)
+//         const docSnapshot = await docRef.get()
+//         const existing_amount = docSnapshot.exists ? parseFloat(docSnapshot.data()[cluster_mapped]) || 0 : 0
 
-        const newAmount = operation === 'subtract' ? existing_amount - float_amount : existing_amount + float_amount
-        const data = { [cluster_mapped]: newAmount < 0 ? 0 : newAmount };
+//         const newAmount = operation === 'subtract' ? existing_amount - float_amount : existing_amount + float_amount
+//         const data = { [cluster_mapped]: newAmount < 0 ? 0 : newAmount };
 
-        await docRef.set(data, {merge: true})
+//         await docRef.set(data, {merge: true})
 
-    }catch(error){
-        console.log(`Error on addOnClusterAmount (editor controller) ${error}`)
-    }
-}
+//     }catch(error){
+//         console.log(`Error on addOnClusterAmount (editor controller) ${error}`)
+//     }
+// }
 
 const updateAccount = async(req, res) => {
     const {name, role} = req.body

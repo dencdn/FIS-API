@@ -147,11 +147,29 @@ const getAllAccounts = async (req, res) => {
     }
   }
 
+  const deleteRequest = async(req, res) => {
+    const id = req.params.id
+    try {
+      const request = db.collection('resetPasswordRequest').doc(id)
+      await request.delete()
+      res.status(200).json({message: 'Request successfully updated'})
+
+    } catch (error) { 
+      console.error('Error updating request status:', error);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Error updating request status:', 
+        error: error.message 
+      });
+    }
+  }
+
   module.exports = {
     getAllAccounts,
     disableAccount,
     createAccount,
     deleteAcc,
     retrieveRoles,
-    changeAccess
+    changeAccess,
+    deleteRequest
   };

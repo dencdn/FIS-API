@@ -56,9 +56,32 @@ const updateUserAcc = async(uid, role, dispName) => {
     }
 }
 
+const getUsers = async (role) => {
+    try{
+        const docref = await db.collection('listOfUsers').get()
+
+        const uids = []
+
+        docref.forEach(doc => {
+            const data = doc.data()
+
+            if(data.role === role && data.uid){
+                uids.push(data.uid)
+            }
+        })
+
+        return uids;
+
+    }catch(error){
+        console.log(`Error in getting list of users : ${error}`)
+    }
+    return [];
+}
+
 module.exports = {
     addComments,
     setNotification,
     setHistoryLogs,
-    updateUserAcc
+    updateUserAcc,
+    getUsers
 }

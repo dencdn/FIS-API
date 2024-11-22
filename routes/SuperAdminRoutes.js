@@ -6,7 +6,8 @@ const { getAllAccounts,
         createAccount, 
         deleteAcc, 
         retrieveRoles,
-        changeAccess } = require('../controller/SuperAdminController')
+        changeAccess,
+        deleteRequest } = require('../controller/SuperAdminController')
 
 SuperAdminRouter.use(setRole([0]))
 
@@ -16,5 +17,6 @@ SuperAdminRouter.post('/create', createAccount)
 SuperAdminRouter.delete('/deleteAcc/:id', deleteAcc)
 SuperAdminRouter.get('/roles', retrieveRoles)
 SuperAdminRouter.patch('/changePermission/:id', changeAccess)
+SuperAdminRouter.delete('/deleteRequest/:id', deleteRequest)
 
 module.exports = SuperAdminRouter;

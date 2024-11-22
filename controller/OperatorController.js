@@ -5,20 +5,28 @@ const sheets = google.sheets('v4');
 const { 
     addComments,
     setNotification,
-    setHistoryLogs } = require('./MultiAccess/Functions');
+    setHistoryLogs,
+    updateUserAcc } = require('./MultiAccess/Functions');
 
 const updateASA_ORS = async (req, res) => {
     const { ors, asa } = req.body.data
-    const { date, DVNo, BUR, payee, particulars, amount } = req.body.DV
+
+    const { date, DVNo, payee, particulars, amount } = req.body.DV
     const previousASA = req.body.previousASA
     const {id} = req.params
+    
+    console.log(req.body.DV)
 
-    console.log(ors)
     const year = new Date().getFullYear();
     const month = new Date().getMonth() + 1
-    const lastORS = ors.split('-').pop()
-    const ORS = await getOrigNumberOfCopiesBUR(lastORS)
-    const finalORS = `501-${year}-${month}-${ORS}`
+    let finalORS = '';
+    if(ors){
+        const lastORS = ors.split('-').pop()
+        const ORS = await getOrigNumberOfCopiesBUR(lastORS)
+        finalORS = `501-${year}-${month}-${ORS}`
+    }
+    console.log(finalORS ? finalORS: 'asd')
+    console.log(asa ? asa : 'asa')
 
     let orsData = ''
 
@@ -50,17 +58,80 @@ const updateASA_ORS = async (req, res) => {
                             .collection('FieldOffices').doc(prevFO)
                             .collection('DV').doc(`${DVNoCount}|${amount}`);
 
+            const docref = db.collection('ControlBook').doc(prevASA)
+                            .collection('FieldOffices').doc(prevFO)
+
+            
             const findDoc = await docRef.get();
+            const doc = await docref.get()
 
             if (findDoc.exists) {
+
+                const parseAmount = parseFloat(amount)
+                const RO = parseFloat(doc.data().RO)
+                const FO = parseFloat(doc.data().FO)
+                const updatedRO = RO + parseAmount 
+                const updatedFO = FO - parseAmount
+
+                await docref.update({
+                    RO: updatedRO,
+                    FO: updatedFO
+                });
+
                 await docRef.delete();
+
+                const ref = db.collection('ControlBook').doc(ASANo).collection('FieldOffices').doc(projectID)
+                const project = await ref.get()
+
+                if(project.exists){
+                    const parseAmount = parseFloat(amount)
+                    const RO = parseFloat(project.data().RO)
+                    const FO = parseFloat(project.data().FO)
+                    const updatedRO = RO - parseAmount 
+                    const updatedFO = FO + parseAmount
+
+                    if(updatedRO < 0){
+                        throw Error("Insufficient amount.")
+                    }
+                    await ref.update({
+                        RO: updatedRO,
+                        FO: updatedFO
+                    });
+                }
+
                 await db.collection('ControlBook').doc(ASANo)
                     .collection('FieldOffices').doc(projectID)
                     .collection('DV').doc(`${DVNoCount}|${amount}`).set(fieldOffice)
+                
+                
+
             } else {
                 console.log('walang nahanap')
             }
         } else {
+
+            await handleControlBook(ASANo, amount)
+
+            const docRef = db.collection('ControlBook').doc(ASANo).collection('FieldOffices').doc(projectID)
+            const project = await docRef.get()
+
+            if(project.exists){
+                const parseAmount = parseFloat(amount)
+                const RO = parseFloat(project.data().RO)
+                const FO = parseFloat(project.data().FO)
+                const updatedRO = RO - parseAmount 
+                const updatedFO = FO + parseAmount
+
+                if(updatedRO < 0){
+                    throw Error("Insufficient amount.")
+                }
+                await docRef.update({
+                    RO: updatedRO,
+                    FO: updatedFO
+                });
+            }
+
+
             await db.collection('ControlBook').doc(ASANo)
                 .collection('FieldOffices').doc(projectID)
                 .collection('DV').doc(`${DVNoCount}|${amount}`).set(fieldOffice)
@@ -74,6 +145,32 @@ const updateASA_ORS = async (req, res) => {
     }
 
 } 
+
+const getBUR = async(req, res) => {
+    try{
+        const year = new Date().getFullYear()
+        const docRef = db.collection('NumberOfRecords').doc(year.toString())
+        const doc = await docRef.get()
+        if(doc.exists){
+            const data = doc.data()
+            const value = data['BURno']
+            res.status(200).json({currentBUR: value})
+        }else{
+            const data = {
+                DVno501CARP: '0000',
+                DVno501COB: '0000',
+                DVno501LFP: '0000',
+                DVnoContractFarming: '0000',
+                BURno: '0000'
+            }
+            await docRef.set(data);
+            return res.status(200).json({currentBUR: '0000'})
+        }
+    }catch(error){
+        console.log('error on getBUR (OPERATOR CONTROLLER)', error)
+        res.status(500)
+    }
+}
 
 const operatorInput = async(req, res) => {
     const { ors, asa } = req.body.fundingData
@@ -222,6 +319,26 @@ const getListOfEditorAccounts = async () => {
     return [];
 }
 
+const handleControlBook = async (ASANo, amount) => {
+    const controlBookRef = db.collection('ControlBook').doc(ASANo);
+    const controlBook = await controlBookRef.get();
+
+    if (controlBook.exists) {
+        const parseAmount = parseFloat(amount)
+        const totalRO = parseFloat(controlBook.data().RO);
+        const totalFO = parseFloat(controlBook.data().FO);
+        const updatedRO = totalRO - parseAmount;
+        const updateFO = totalFO + parseAmount
+
+        await controlBookRef.update({
+            RO: updatedRO,
+            FO: updateFO
+        });
+    } else {
+        console.log("No such document!");
+    }
+}
+
 const handleBudget = async (body) => {
     const {date, DVNo, BUR, payee, particulars, amount,asa} = body 
 
@@ -348,7 +465,6 @@ const transferDocument = async (req, res) => {
     const logs = `${payee}!${DV}!Updated By ${dispName}!${dateTimePassed}`
 
     try {
-        await handleBudget({date, DVNo, BUR, payee, particulars, amount,asa})
         const updatedDocu = await updateStatus(DV, updatedBy, false)
         const returnData = {
             [DV] : updatedDocu
@@ -559,6 +675,10 @@ const appendDataToSheet = async (req, res) => {
             const leftBudget = parseFloat(controlBook.data().leftBudget);
             const updatedBudget = leftBudget - parseASA;
 
+            if(updatedBudget < 0){
+                throw Error("Insufficient amount.")
+            }
+
             await controlBookRef.update({
                 leftBudget: updatedBudget
             });
@@ -682,6 +802,8 @@ const updateFieldOffice = async(req, res) => {
     }
 }
 
+
+
 const deleteFieldOffice = async(req, res) => {
     const { id } = req.params
     const [ASANo, docId, projectName, RO, totalASA] = id.split('!')
@@ -761,6 +883,25 @@ const getOrigNumberOfCopiesBUR = async(givenNo) => {
     }
 }
 
+const updateAccount = async(req, res) => {
+    const {name, role} = req.body
+    const uid = req.user.uid
+    console.log(name, uid, role)
+    try {
+        const response = await updateUserAcc(uid, role, name)
+
+        const uname = response.customClaims.dispName
+        const urole = response.customClaims.role
+        const userid = response.uid
+        const email = response.email
+
+        res.status(200).json({ success: true, role: urole, name: uname, uid: userid, uemail: email})
+    } catch (error) {
+        console.log(`Error updating ${error}`)
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
 module.exports = {
     operatorInput, 
     opReturnDocu, 
@@ -773,5 +914,7 @@ module.exports = {
     deleteControlBook,
     updateFieldOffice,
     deleteFieldOffice,
-    updateASA_ORS
+    updateASA_ORS,
+    updateAccount,
+    getBUR
 }

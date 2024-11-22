@@ -332,7 +332,7 @@ const deleteTax = async (req, res) => {
 const approveDV = async(req, res) => {
   const DV = req.params.id
   const dispName = req.user.name;
-  const payee = req.body.data
+  const {payee, amount, fund, date, optionalAmount, accCategory}= req.body.data
 
   const today = new Date()
     const dateCollection = today.toLocaleDateString("en-US", {
@@ -364,11 +364,86 @@ const approveDV = async(req, res) => {
       status: 'Approved',
     });
     await setHistoryLogs(dateTimeCollection, logs)
+    await addOnClusterAmount(amount, fund, date)
+    await addOnCategoryPerMonth(amount, optionalAmount, accCategory, date)
     
     res.status(200).json({message: 'Document Approved Successfully'})
   }catch(error){
     console.log('Error Approving Document',error)
     res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+const addOnClusterAmount = async (amount, cluster, dateString, operation='add') => {
+  try{
+      const float_amount = parseFloat(amount)
+
+      const date = new Date(dateString);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+
+      const clusterMapping = {
+          "501 COB": "COB",
+          "501 LFP": "LFP",
+          "501 CARP": "CARP",
+          "Contract Farming": "CF"
+      };
+
+      const cluster_mapped = clusterMapping[cluster]
+      console.log(`${year}-${month}`, amount, cluster, dateString)
+      const docRef = db.collection('AmountRecord').doc(`${year}-${month}`)
+      const docSnapshot = await docRef.get()
+      const existing_amount = docSnapshot.exists ? parseFloat(docSnapshot.data()[cluster_mapped]) || 0 : 0
+
+      const newAmount = operation === 'subtract' ? existing_amount - float_amount : existing_amount + float_amount
+      const data = { [cluster_mapped]: newAmount < 0 ? 0 : newAmount };
+
+      await docRef.set(data, {merge: true})
+
+  }catch(error){
+      console.log(`Error on addOnClusterAmount (editor controller) ${error}`)
+  }
+}
+
+const addOnCategoryPerMonth = async (amount, optionalAmount, accCategory, dateString, operation = 'add') => {
+  try{
+      const today = new Date(dateString);
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+
+      const docRef = db.collection('MonthCategory').doc(`${year}-${month}`);
+
+      if (optionalAmount.length === 1 && optionalAmount[0] === ''){
+          const [category, subcategory] = accCategory[0].split('|');
+          console.log(accCategory)
+          const fieldKey = `${category}|${subcategory}`;
+          const float_amount = parseFloat(amount)
+
+          const docSnapshot = await docRef.get();
+          const existingData = docSnapshot.exists ? docSnapshot.data() : {};
+          const existingAmount = parseFloat(existingData[fieldKey] || 0);
+
+          const newAmount = operation === 'subtract' ? existingAmount - float_amount : existingAmount + float_amount
+          await docRef.set({ [fieldKey]: newAmount < 0 ? 0 : newAmount }, { merge: true });
+          
+      }else{
+          const updates = {};
+          for (let i = 0; i< accCategory.length; i++){
+              const [category, subcategory] = accCategory[i].split('|')
+              const fieldKey = `${category}|${subcategory}`;
+              const subAmount = parseFloat(optionalAmount[i]);
+
+              const docSnapshot = await docRef.get()
+              const existingData = docSnapshot.exists ? docSnapshot.data() : {}
+              const existingAmount = parseFloat(existingData[fieldKey] || 0);
+
+              const newAmount = operation === 'subract' ? existingAmount - subAmount : existingAmount + subAmount
+              updates[fieldKey] = newAmount < 0 ? 0 : newAmount;
+          }
+          await docRef.set(updates, { merge: true });
+      }
+  }catch(error){
+      console.log(`Error on addOnCategoryPerMonth(editor controller) ${error}`)
   }
 }
 

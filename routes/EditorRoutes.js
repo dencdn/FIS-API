@@ -20,7 +20,7 @@ const {
 } = require('../controller/EditorController');
 
 
-editorRouter.use(setRole([4]))
+editorRouter.use(setRole([3, 4]))
 
 editorRouter.post('/createDV', createDV)
 editorRouter.post('/passRecord', passDocument)
