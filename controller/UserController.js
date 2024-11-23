@@ -14,7 +14,8 @@ const login = (req, res) => {
         res.cookie('token', token, {
             httpOnly: true,  
             secure: true,  
-            sameSite: 'None' 
+            sameSite: 'None',
+            path: '/' 
         });
         res.status(200).json({ success: true, role: role, name: name, uid: uid, uemail: email});
     }catch(error){
@@ -33,7 +34,8 @@ const refreshToken = (req, res) => {
         res.cookie('token', token, {
             httpOnly: true,  
             secure: true,  
-            sameSite: 'None' 
+            sameSite: 'None',
+            path: '/' 
         });
         res.status(200).json({ success: true, role: role, name: name, uid: uid, uemail: email});
     }catch(error){
