@@ -3,44 +3,32 @@ const {admin, db, rtdb}  = require('../config/firebase')
 const { 
     addComments,
     setNotification,
-    setHistoryLogs } = require('./MultiAccess/Functions')
+    setHistoryLogs,
+    getDateTime,
+    getUsers } = require('./MultiAccess/Functions')
 
 const returnRecordTo = async(req, res) => {
     const {DV, payee, returnTo, remarks} = req.body;
     const dispName = req.user.name;
-    const today = new Date()
-    const dateCollection = today.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "2-digit"
-    });
-    const timeCollection = today.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true
-    });
+    
+    const dateTimeCollection = getDateTime();
     const notifMessage1 = "The Disbursement Voucher for"
     const notifMessage2 = "has been returned by"
-    const dataCollection = `${dateCollection}|${timeCollection}|${payee}|${dispName}`
-    const dateTimePassed = `${dateCollection}|${timeCollection}`;
-    const returnedBy = `${dispName}|${dateTimePassed}`
-    const comment = {dispName, remarks, dateTimePassed}
-    const logs = `${payee}!${DV}!Returned By ${dispName}!${dateTimePassed}`
+    const dataCollection = `${dateTimeCollection}|${payee}|${dispName}`
+    const returnedBy = `${dispName}|${dateTimeCollection}`
+    const comment = {dispName, remarks, dateTimeCollection}
+    const logs = `${payee}!${DV}!Returned By ${dispName}!${dateTimeCollection}!Returned`
     
     try{
         const updatedDocu = await updateStatus(DV, returnedBy, returnTo)
-        const returnData = {
-            [DV] : updatedDocu
-        }
-        const listOfAcc = await getListOfAccount(returnTo);
+        const listOfAcc = await getUsers(returnTo);
         await setNotification(listOfAcc, dataCollection, notifMessage1, notifMessage2, DV)
         if(remarks) {
             await addComments(DV, comment)
         }
-        await setHistoryLogs(dateTimePassed, logs)
+        await setHistoryLogs(dateTimeCollection, logs)
 
-        res.status(200).json({success: true, update: returnData});
+        res.status(200).json({message: 'Disbursement Voucher has been returned'});
 
     }catch(error){
         console.log(`Error retrieving passed records: ${error}`);
@@ -84,67 +72,29 @@ const updateStatusToApproved = async(DV, DTpass) => {
     }
 }
 
-const getListOfAccount = async (listNumber) => {
-    try{
-
-        const docref = await db.collection('listOfUsers').get()
-
-        const uids = []
-
-        docref.forEach(doc => {
-            const data = doc.data()
-
-            if(data.role === listNumber && data.uid){
-                uids.push(data.uid)
-            }
-        })
-    
-        return uids;
-
-    }catch(error){
-        console.log(`Error in getting list of op : ${error}`)
-    }
-    return [];
-}
-
 const transferDocument = async (req, res) => {
     const {DV, payee, remarks} = req.body;
     const dispName = req.user.name;
     const uid = req.user.uid;
-    const today = new Date()
-    const dateCollection = today.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "2-digit"
-      });
-    const timeCollection = today.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true
-    });
+
+    const dateTimeCollection = getDateTime();
     const notifMessage1 = "The Disbursement Voucher for"
     const notifMessage2 = "has been passed by"
-    const dataCollection = `${dateCollection}|${timeCollection}|${payee}|${dispName}`
-    const dateTimePassed = `${dateCollection}|${timeCollection}`;
-    const reviewedBy = `${dispName}|${dateTimePassed}`
-    const comment = {dispName, remarks, dateTimePassed}
-    const logs = `${payee}!${DV}!Reviewed By ${dispName}!${dateTimePassed}`
+    const dataCollection = `${dateTimeCollection}|${payee}|${dispName}`
+    const reviewedBy = `${dispName}|${dateTimeCollection}`
+    const comment = {dispName, remarks, dateTimeCollection}
+    const logs = `${payee}!${DV}!Reviewed By ${dispName}!${dateTimeCollection}!For Approval`
 
     try {
-        const updatedDocu = await updateStatusToApproved(DV, reviewedBy)
-        const returnData = {
-            [DV] : updatedDocu
-        }
-        const listOfApproverAcc = await getListOfAccount('1');
+        await updateStatusToApproved(DV, reviewedBy)
+        const listOfApproverAcc = await getUsers('1');
         await setNotification(listOfApproverAcc, dataCollection, notifMessage1, notifMessage2, DV)
         if(remarks) {
             await addComments(DV, comment)
         }
-        await setHistoryLogs(dateTimePassed, logs)
+        await setHistoryLogs(dateTimeCollection, logs)
 
-        //res.status(200).json({success: true, record: data, update: returnData});
-        res.status(200).json({success: true, update: returnData});
+        res.status(200).json({message: 'Disbursement Voucher has been transfer'});
     }catch(error){
         console.log('error creating passed records: ', error)
         res.status(500).json({success: false, message: `error creating passed records: ${error}`});

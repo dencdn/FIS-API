@@ -15,8 +15,7 @@ const {
     getPermission,
     getNumberOfCopies,
     savePayeeData,
-    getPayeeData,
-    updateAccount
+    getPayeeData
 } = require('../controller/EditorController');
 
 
@@ -35,7 +34,6 @@ editorRouter.get('/getNumberOfCopies', getNumberOfCopies)
 
 editorRouter.post('/savePayeeData', savePayeeData)
 editorRouter.get('/getPayeeData', getPayeeData)
-editorRouter.patch('/updateAcc', updateAccount)
 
 
 module.exports = editorRouter;

@@ -61,6 +61,7 @@ const getAllAccounts = async (req, res) => {
     const role = req.body.role;
     const dispName = req.body.name
     
+    
     const email = decodedToken.email
     const uid = decodedToken.uid
   
@@ -69,11 +70,15 @@ const getAllAccounts = async (req, res) => {
       uid : uid,
       name : dispName,
       email: email,
-      role : role
+      role : role,
+      firstTimeLogin: true
     }
   
     try{
-       await admin.auth().setCustomUserClaims(uid, { role, dispName });
+        await admin.auth().setCustomUserClaims(uid, { 
+          role, 
+          dispName
+        });
   
        await db.collection('listOfUsers').doc(uid).set(userData);
        
@@ -136,6 +141,7 @@ const getAllAccounts = async (req, res) => {
       await db.collection('Roles').doc(roleName).update({
         permission: newPermission
       })
+      addAccessControlLogs(newPermission, roleName)
       res.status(200).json({message: 'Permission Change'})
     }catch(error){
       console.error('Error changing permission:', error);
@@ -146,6 +152,35 @@ const getAllAccounts = async (req, res) => {
       });
     }
   }
+
+  const addAccessControlLogs = (event, role) => {
+    const year = new Intl.DateTimeFormat('en-PH', {year: 'numeric'}).format(new Date())
+    const month = new Intl.DateTimeFormat('en-PH', {month: '2-digit'}).format(new Date())
+    const yearMonth = `${year}-${month}`
+    const timestamp = new Date().toLocaleString('en-PH', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    });
+    const feature = role === 'Budget Officer' ? (event ? 'Approver' : 'Budget Officer') :
+                    role === 'Funding' ? (event ? 'Preparer' : 'Funding') :
+                    role === 'Preparer' ? (event ? 'Funding' : 'Preparer') :
+                    'Approver';
+    const docRef = db.collection('accessControlLogs').doc(yearMonth)
+    docRef.set({
+      [timestamp]: {
+        event: event,
+        role: role,
+        feature: feature
+      }
+    }, {merge: true})
+  }
+
 
   const deleteRequest = async(req, res) => {
     const id = req.params.id
@@ -171,5 +206,5 @@ const getAllAccounts = async (req, res) => {
     deleteAcc,
     retrieveRoles,
     changeAccess,
-    deleteRequest
+    deleteRequest,
   };

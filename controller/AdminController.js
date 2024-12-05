@@ -4,7 +4,10 @@ require('dotenv').config();
 const fs = require('fs');
 const FieldValue = admin.firestore.FieldValue;
 
-const {setHistoryLogs} = require('./MultiAccess/Functions')
+const {
+    setHistoryLogs,
+    getDateTime
+  } = require('./MultiAccess/Functions')
 
 const getAllLogs = async(req, res) => {
   try{
@@ -334,22 +337,8 @@ const approveDV = async(req, res) => {
   const dispName = req.user.name;
   const {payee, amount, fund, date, optionalAmount, accCategory}= req.body.data
 
-  const today = new Date()
-    const dateCollection = today.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "2-digit"
-      });
-
-    const timeCollection = today.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true
-    });
-
-    const dateTimeCollection = `${dateCollection} ${timeCollection}`;
-    const logs = `${payee}!${DV}!Approved By ${dispName}!${dateTimeCollection}`
+  const dateTimeCollection = getDateTime();
+  const logs = `${payee}!${DV}!Approved By ${dispName}!${dateTimeCollection}!Approved`
 
   try{
     const docRef = db.collection('records').doc(DV);
@@ -390,7 +379,6 @@ const addOnClusterAmount = async (amount, cluster, dateString, operation='add') 
       };
 
       const cluster_mapped = clusterMapping[cluster]
-      console.log(`${year}-${month}`, amount, cluster, dateString)
       const docRef = db.collection('AmountRecord').doc(`${year}-${month}`)
       const docSnapshot = await docRef.get()
       const existing_amount = docSnapshot.exists ? parseFloat(docSnapshot.data()[cluster_mapped]) || 0 : 0
@@ -415,7 +403,6 @@ const addOnCategoryPerMonth = async (amount, optionalAmount, accCategory, dateSt
 
       if (optionalAmount.length === 1 && optionalAmount[0] === ''){
           const [category, subcategory] = accCategory[0].split('|');
-          console.log(accCategory)
           const fieldKey = `${category}|${subcategory}`;
           const float_amount = parseFloat(amount)
 
@@ -449,7 +436,7 @@ const addOnCategoryPerMonth = async (amount, optionalAmount, accCategory, dateSt
 
 const getNumberOfRecords = async (req, res) => {
   try{
-    const year = new Date().getFullYear()
+    const year = new Intl.DateTimeFormat('en-PH', {year: 'numeric'}).format(new Date())
     const docRef = db.collection('NumberOfRecords').doc(year.toString())
     const data = await docRef.get()
     if(data.exists){

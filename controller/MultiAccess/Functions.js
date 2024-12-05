@@ -44,18 +44,6 @@ const setNotification = async (destination_uids, dataCollection, notifMessage1, 
     }
 }
 
-const updateUserAcc = async(uid, role, dispName) => {
-    try {
-        console.log('update', uid, role, dispName)
-        await admin.auth().setCustomUserClaims(uid, { role, dispName });
-        await db.collection('listOfUsers').doc(uid).update({name: dispName})
-        const user = await admin.auth().getUser(uid);
-        return user.toJSON()
-    } catch (error) {
-        console.log('Error updating account', error)
-    }
-}
-
 const getUsers = async (role) => {
     try{
         const docref = await db.collection('listOfUsers').get()
@@ -78,10 +66,30 @@ const getUsers = async (role) => {
     return [];
 }
 
+const getDateTime = () => {
+    const today = new Date()
+    const dateCollection = today.toLocaleDateString("en-PH", {
+        timeZone: 'Asia/Manila',
+        year: "numeric",
+        month: "long",
+        day: "2-digit"
+      });
+
+    const timeCollection = today.toLocaleTimeString("en-PH", {
+        timeZone: 'Asia/Manila',
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true
+    });
+
+    return `${dateCollection} ${timeCollection}`;
+}
+
 module.exports = {
     addComments,
     setNotification,
     setHistoryLogs,
-    updateUserAcc,
-    getUsers
+    getUsers,
+    getDateTime
 }

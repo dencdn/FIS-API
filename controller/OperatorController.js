@@ -6,7 +6,10 @@ const {
     addComments,
     setNotification,
     setHistoryLogs,
-    updateUserAcc } = require('./MultiAccess/Functions');
+    getDateTime ,
+    getUsers
+} = require('./MultiAccess/Functions');
+const { messaging } = require('firebase-admin');
 
 const updateASA_ORS = async (req, res) => {
     const { ors, asa } = req.body.data
@@ -14,8 +17,6 @@ const updateASA_ORS = async (req, res) => {
     const { date, DVNo, payee, particulars, amount } = req.body.DV
     const previousASA = req.body.previousASA
     const {id} = req.params
-    
-    console.log(req.body.DV)
 
     const year = new Date().getFullYear();
     const month = new Date().getMonth() + 1
@@ -25,8 +26,6 @@ const updateASA_ORS = async (req, res) => {
         const ORS = await getOrigNumberOfCopiesBUR(lastORS)
         finalORS = `501-${year}-${month}-${ORS}`
     }
-    console.log(finalORS ? finalORS: 'asd')
-    console.log(asa ? asa : 'asa')
 
     let orsData = ''
 
@@ -66,17 +65,30 @@ const updateASA_ORS = async (req, res) => {
             const doc = await docref.get()
 
             if (findDoc.exists) {
-
+                await handleControlBook(prevASA, amount, 'subtract')
+                const docdata = doc.data()
                 const parseAmount = parseFloat(amount)
-                const RO = parseFloat(doc.data().RO)
-                const FO = parseFloat(doc.data().FO)
+                const RO = parseFloat(docdata.RO)
+                const FO = parseFloat(docdata.FO)
+                const thisMonthFO = parseFloat(docdata.thisMonthFO)
+                const weekFO = parseFloat(docdata.weekFO)
+
                 const updatedRO = RO + parseAmount 
                 const updatedFO = FO - parseAmount
+                const updatedThisMonthFO = thisMonthFO - parseAmount
+                const updatedThisMonthRO = updatedRO
+                const updatedWeekFO = (weekFO - parseAmount) <= 0 ? weekFO - parseAmount : 0
 
                 await docref.update({
                     RO: updatedRO,
-                    FO: updatedFO
+                    FO: updatedFO,
+                    thisMonthFO: updatedThisMonthFO, 
+                    thisMonthRO: updatedThisMonthRO,
+                    weekFO: updatedWeekFO,
+                    weekRO: updatedRO
                 });
+ 
+                await handleFormDataRemainingAmount_RO(prevASA, prevFO, updatedRO)
 
                 await docRef.delete();
 
@@ -84,29 +96,41 @@ const updateASA_ORS = async (req, res) => {
                 const project = await ref.get()
 
                 if(project.exists){
+                    await handleControlBook(ASANo, amount)
+                    const projectdata = project.data()
                     const parseAmount = parseFloat(amount)
-                    const RO = parseFloat(project.data().RO)
-                    const FO = parseFloat(project.data().FO)
+                    const RO = parseFloat(projectdata.RO)
+                    const FO = parseFloat(projectdata.FO)
+                    const thisMonthFO = parseFloat(projectdata.thisMonthFO)
+                    const weekFO = parseFloat(projectdata.weekFO)
+
                     const updatedRO = RO - parseAmount 
                     const updatedFO = FO + parseAmount
+                    const updatedThisMonthFO = thisMonthFO + parseAmount
+                    const updatedThisMonthRO = updatedRO
+                    const updatedWeekFO = weekFO + parseAmount
 
                     if(updatedRO < 0){
                         throw Error("Insufficient amount.")
                     }
                     await ref.update({
                         RO: updatedRO,
-                        FO: updatedFO
+                        FO: updatedFO,
+                        thisMonthFO: updatedThisMonthFO, 
+                        thisMonthRO: updatedThisMonthRO,
+                        weekFO: updatedWeekFO,
+                        weekRO: updatedRO
                     });
+                    await handleFormDataRemainingAmount_RO(ASANo, projectID, updatedRO)
                 }
 
                 await db.collection('ControlBook').doc(ASANo)
                     .collection('FieldOffices').doc(projectID)
                     .collection('DV').doc(`${DVNoCount}|${amount}`).set(fieldOffice)
                 
-                
 
             } else {
-                console.log('walang nahanap')
+                console.log('No document found')
             }
         } else {
 
@@ -117,18 +141,30 @@ const updateASA_ORS = async (req, res) => {
 
             if(project.exists){
                 const parseAmount = parseFloat(amount)
-                const RO = parseFloat(project.data().RO)
-                const FO = parseFloat(project.data().FO)
+                const projectdata = project.data()
+                const RO = parseFloat(projectdata.RO)
+                const FO = parseFloat(projectdata.FO)
+                const thisMonthFO = parseFloat(projectdata.thisMonthFO)
+                const weekFO = parseFloat(projectdata.weekFO)
+
                 const updatedRO = RO - parseAmount 
                 const updatedFO = FO + parseAmount
+                const updatedThisMonthFO = thisMonthFO + parseAmount
+                const updatedThisMonthRO = updatedRO
+                const updatedWeekFO = weekFO + parseAmount
 
                 if(updatedRO < 0){
                     throw Error("Insufficient amount.")
                 }
                 await docRef.update({
                     RO: updatedRO,
-                    FO: updatedFO
+                    FO: updatedFO,
+                    thisMonthFO: updatedThisMonthFO,
+                    thisMonthRO: updatedThisMonthRO,
+                    weekFO: updatedWeekFO,
+                    weekRO: updatedRO
                 });
+                await handleFormDataRemainingAmount_RO(ASANo, projectID, updatedRO)
             }
 
 
@@ -172,108 +208,30 @@ const getBUR = async(req, res) => {
     }
 }
 
-const operatorInput = async(req, res) => {
-    const { ors, asa } = req.body.fundingData
-    const { date, DVNo, BUR, payee, particulars, amount } = req.body.fieldOfficeData
-    const previousASA = req.body.previousASA
-    const { id } = req.params
-
-    let orsData = ''
-
-    const [ASANo, projectID] = asa.split('/')
-    const [ , , , DVNoCount ] = DVNo.split('-')
-    if(ors) {
-        const [ , , , BURCount ] = ors.split('-')
-        orsData = BURCount
-    } 
-
-
-    dvData = {
-        ORSBURS: ors ? ors : '',
-        ASA: asa
-    }
-
-    fieldOffice = {
-        date,
-        DVNoCount, 
-        orsData, 
-        payee, 
-        particulars, 
-        amount
-    } 
-
-    try {
-        if(previousASA) {
-            const [prevASA, prevFO] = previousASA.split('/')
-            console.log('may laman', prevASA, prevFO)
-            const docRef = db.collection('ControlBook').doc(prevASA)
-                            .collection('FieldOffices').doc(prevFO)
-                            .collection('DV').doc(`${DVNoCount}|${amount}`);
-
-            const findDoc = await docRef.get();
-
-            if (findDoc.exists) {
-                console.log('may nahanap', findDoc.data());
-                await docRef.delete();
-                await db.collection('ControlBook').doc(ASANo)
-                    .collection('FieldOffices').doc(projectID)
-                    .collection('DV').doc().set(fieldOffice)
-            } else {
-                console.log('walang nahanap')
-            }
-        } else {
-            console.log('walang laman')
-            await db.collection('ControlBook').doc(ASANo)
-                .collection('FieldOffices').doc(projectID)
-                .collection('DV').doc(`${DVNoCount}|${amount}`).set(fieldOffice)
-        }
-
-        const docref = db.collection('records').doc(id)
-        await docref.update(dvData)
-
-        res.status(200).json('Successfully Updated')
-    } catch (error) {
-        console.error("Error updating document: operator: ", error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-
-}
-
 const opReturnDocu = async (req, res) => {
     const {DV, payee, remarks} = req.body;
     const dispName = req.user.name;
     const uid = req.user.uid;
-    const today = new Date()
-    const dateCollection = today.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "2-digit"
-      });
-    const timeCollection = today.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true
-    });
+
+    const dateTimeCollection = getDateTime();
     const notifMessage1 = "The Disbursement Voucher for"
     const notifMessage2 = "has been returned by"
-    const dataCollection = `${dateCollection}|${timeCollection}|${payee}|${dispName}`
-    const dateTimePassed = `${dateCollection}|${timeCollection}`;
-    const returnedBy = `${dispName}|${dateTimePassed}`
-    const comment = {dispName, remarks, dateTimePassed}
-    const logs = `${payee}!${DV}!Returned By ${dispName}!${dateTimePassed}`
+    const dataCollection = `${dateTimeCollection}|${payee}|${dispName}`
+    const returnedBy = `${dispName}|${dateTimeCollection}`
+    const comment = {dispName, remarks, dateTimeCollection}
+    const logs = `${payee}!${DV}!Returned By ${dispName}!${dateTimeCollection}!Returned`
 
     try{
         const updatedDocu = await updateStatus(DV, returnedBy, true)
         const returnData = {
             [DV] : updatedDocu
         }
-        const listOfEditorAcc = await getListOfEditorAccounts();
+        const listOfEditorAcc = await getUsers('4');
         await setNotification(listOfEditorAcc, dataCollection, notifMessage1, notifMessage2, DV)
         if(remarks) {
             await addComments(DV, comment)
         }
-        await setHistoryLogs(dateTimePassed, logs)
+        await setHistoryLogs(dateTimeCollection, logs)
 
         res.status(200).json({success: true, update: returnData});
     }catch(error){
@@ -295,44 +253,83 @@ const updateStatus = async (DV, dTPassed, flag) => {
     return updatedDoc.data();
 };
 
-
-const getListOfEditorAccounts = async () => {
+const handleFormDataRemainingAmount_RO = async (controBookID, projectID, newAmount) => {
     try{
+        const docRef = db.collection('formData').doc('ControlBook')
+        const doc = await docRef.get()
 
-        const docref = await db.collection('listOfUsers').get()
+        if(!doc.exists){
+            console.log('Document not found')
+            return
+        }
 
-        const uids = []
+        const data = doc.data()
+        if (!data[controBookID] || !Array.isArray(data[controBookID])) {
+            console.error(`controBookID ${controBookID} not found or is not an array`);
+            return;
+        }
 
-        docref.forEach(doc => {
-            const data = doc.data()
-
-            if(data.role === '4' && data.uid){
-                uids.push(data.uid)
+        const updatedArray = data[controBookID].map((item) => {
+            if (item.projectID === projectID) {
+                return { ...item, RO: newAmount };
             }
-        })
+            return item; 
+        });
 
-        return uids;
-
-    }catch(error){
-        console.log(`Error in getting list of editor : ${error}`)
+        await docRef.update({
+            [controBookID]: updatedArray,
+        });
+    }catch(err){
+        console.error('Error updating amount:', err);
     }
-    return [];
 }
 
-const handleControlBook = async (ASANo, amount) => {
+const handleControlBook = async (ASANo, amount, operation='add') => {
     const controlBookRef = db.collection('ControlBook').doc(ASANo);
     const controlBook = await controlBookRef.get();
 
     if (controlBook.exists) {
-        const parseAmount = parseFloat(amount)
-        const totalRO = parseFloat(controlBook.data().RO);
-        const totalFO = parseFloat(controlBook.data().FO);
-        const updatedRO = totalRO - parseAmount;
-        const updateFO = totalFO + parseAmount
+        const controlBookdata = controlBook.data()
+        let updatedRO
+        let updateFO
+        let updatedThisMonthFO
+        let updatedThisMonthRO
+        let updatedWeekFO
+
+        if(operation == 'add'){
+            const parseAmount = parseFloat(amount)
+            const totalRO = parseFloat(controlBookdata.RO);
+            const totalFO = parseFloat(controlBookdata.FO);
+            const thisMonthFO_value = parseFloat(controlBookdata.thisMonthFO || 0)
+            const weekFO = parseFloat(controlBookdata.weekFO)
+
+            updatedRO = totalRO - parseAmount;
+            updateFO = totalFO + parseAmount
+            updatedThisMonthFO = thisMonthFO_value + parseAmount
+            updatedThisMonthRO = updatedRO
+            updatedWeekFO = weekFO + parseAmount
+            
+        }else{
+            const parseAmount = parseFloat(amount)
+            const totalRO = parseFloat(controlBookdata.RO);
+            const totalFO = parseFloat(controlBookdata.FO);
+            const thisMonthFO_value = parseFloat(controlBookdata.thisMonthFO || 0)
+            const weekFO = parseFloat(controlBookdata.weekFO)
+
+            updatedRO = totalRO + parseAmount;
+            updateFO = totalFO - parseAmount
+            updatedThisMonthFO = thisMonthFO_value - parseAmount
+            updatedThisMonthRO = updatedRO
+            updatedWeekFO = (weekFO - parseAmount) <= 0 ? weekFO - parseAmount : 0 
+        }
 
         await controlBookRef.update({
             RO: updatedRO,
-            FO: updateFO
+            FO: updateFO,
+            thisMonthFO: updatedThisMonthFO,
+            thisMonthRO: updatedThisMonthRO,
+            weekFO: updatedWeekFO,
+            weekRO: updatedRO
         });
     } else {
         console.log("No such document!");
@@ -444,67 +441,29 @@ const transferDocument = async (req, res) => {
     const { date, DVNo, BUR, particulars, amount, asa } = req.body.fieldOfficeData
     const dispName = req.user.name;
     const uid = req.user.uid;
-    const today = new Date()
-    const dateCollection = today.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "2-digit"
-      });
-    const timeCollection = today.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true
-    });
+    
+    const dateTimeCollection = getDateTime();
     const notifMessage1 = "The Disbursement Voucher for"
     const notifMessage2 = "has been passed by"
-    const dataCollection = `${dateCollection}|${timeCollection}|${payee}|${dispName}`
-    const dateTimePassed = `${dateCollection}|${timeCollection}`;
-    const updatedBy = `${dispName}|${dateTimePassed}`
-    const comment = {dispName, remarks, dateTimePassed}
-    const logs = `${payee}!${DV}!Updated By ${dispName}!${dateTimePassed}`
+    const dataCollection = `${dateTimeCollection}|${payee}|${dispName}`
+    const updatedBy = `${dispName}|${dateTimeCollection}`
+    const comment = {dispName, remarks, dateTimeCollection}
+    const logs = `${payee}!${DV}!Updated By ${dispName}!${dateTimeCollection}!Under Review`
 
     try {
-        const updatedDocu = await updateStatus(DV, updatedBy, false)
-        const returnData = {
-            [DV] : updatedDocu
-        }
-        const listOfHeadAcc = await getListOfHeadAccounts();
+         await updateStatus(DV, updatedBy, false)
+        const listOfHeadAcc = await getUsers('2');
         await setNotification(listOfHeadAcc, dataCollection, notifMessage1, notifMessage2, DV)
         if(remarks) {
             await addComments(DV, comment)
         }
-        await setHistoryLogs(dateTimePassed, logs)
+        await setHistoryLogs(dateTimeCollection, logs)
 
-        //res.status(200).json({success: true, record: data, update: returnData});
-        res.status(200).json({success: true, update: returnData});
+        res.status(200).json({message: 'Disbursement Voucher has been returned'});
     }catch(error){
         console.log('error creating passed records: ', error)
         res.status(500).json({success: false, message: `error creating passed records: ${error}`});
     }
-}
-
-const getListOfHeadAccounts = async () => {
-    try{
-
-        const docref = await db.collection('listOfUsers').get()
-
-        const uids = []
-
-        docref.forEach(doc => {
-            const data = doc.data()
-
-            if(data.role === '2' && data.uid){
-                uids.push(data.uid)
-            }
-        })
-
-        return uids;
-
-    }catch(error){
-        console.log(`Error in getting list of op : ${error}`)
-    }
-    return [];
 }
 
 const getPermission = async(req, res) => {
@@ -583,21 +542,7 @@ const appendDataToSheet = async (req, res) => {
   const addControlBook = async(req, res) => {
     const { ASANo, date, SARONo, TotalASA, description, endDate } = req.body.data
 
-    const today = new Date()
-    const dateCollection = today.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "2-digit"
-      });
-
-    const timeCollection = today.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true
-    });
-
-    const dateTimeCollection = `${dateCollection} ${timeCollection}`;
+    const dateTimeCollection = getDateTime();
     const finalASANo = `${ASANo}|${createAcronym(description)}`
 
     const data = {
@@ -610,7 +555,25 @@ const appendDataToSheet = async (req, res) => {
         RO: TotalASA,
         FO: 0,
         endDate: endDate,
-        leftBudget: TotalASA
+        leftBudget: TotalASA,
+        prevMonthFO: 0,
+        prevMonthRO: 0,
+        thisMonthFO: 0,
+        thisMonthRO: 0,
+        cbStatus: 'active',
+        weekFO: 0,
+        week1FO: 0,
+        week2FO: 0,
+        week3FO: 0,
+        week4FO: 0,
+        week5FO: 0,
+        weekRO: 0,
+        week1RO: 0,
+        week2RO: 0,
+        week3RO: 0,
+        week4RO: 0,
+        week5RO: 0,
+
     }
 
     try {
@@ -634,21 +597,7 @@ const appendDataToSheet = async (req, res) => {
     const  projectID  = req.body.projectID
     const { id } = req.params
 
-    const today = new Date()
-    const dateCollection = today.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "2-digit"
-      });
-
-    const timeCollection = today.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true
-    });
-
-    const dateTimeCollection = `${dateCollection} ${timeCollection}`;
+    const dateTimeCollection = getDateTime();
 
     const data = {
         fieldOffice: fieldOffice,
@@ -657,7 +606,23 @@ const appendDataToSheet = async (req, res) => {
         createdAt: dateTimeCollection,
         RO: ASA,
         FO: 0,
-        leftBudget: ASA
+        leftBudget: ASA,
+        prevMonthFO: 0,
+        prevMonthRO: 0,
+        thisMonthFO: 0,
+        thisMonthRO: 0,
+        weekFO: 0,
+        week1FO: 0,
+        week2FO: 0,
+        week3FO: 0,
+        week4FO: 0,
+        week5FO: 0,
+        weekRO: 0,
+        week1RO: 0,
+        week2RO: 0,
+        week3RO: 0,
+        week4RO: 0,
+        week5RO: 0,
     }
 
     const formData = {
@@ -699,22 +664,8 @@ const appendDataToSheet = async (req, res) => {
   const updateControlBook = async(req, res) => {
     const { id } = req.params
     const { ASANo, date, SARONo, TotalASA, description } = req.body.data
-    
-    const today = new Date()
-    const dateCollection = today.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "2-digit"
-      });
 
-    const timeCollection = today.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true
-    });
-
-    const dateTimeCollection = `${dateCollection} ${timeCollection}`;
+    const dateTimeCollection = getDateTime();
     const finalASANo = `${ASANo}|${createAcronym(description)}`
 
     const data = {
@@ -758,21 +709,7 @@ const updateFieldOffice = async(req, res) => {
     const fieldOfficeData = req.body.data
     const {RO, projectID, projectName} = req.body.prevData
 
-    const today = new Date()
-    const dateCollection = today.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "2-digit"
-      });
-
-    const timeCollection = today.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true
-    });
-
-    const dateTimeCollection = `${dateCollection} ${timeCollection}`;
+    const dateTimeCollection = getDateTime;
 
     const data = {
         ...fieldOfficeData,
@@ -866,8 +803,10 @@ const getOrigNumberOfCopiesBUR = async(givenNo) => {
 
             let incrementedByOne;
             if(currentNoBUR === givenNo){
-                incrementedByOne = (parseInt(givenNo, 10)+1).toString().padStart(4, '0');
+                console.log(currentNoBUR, givenNo, 'here')
+                incrementedByOne = parseInt(givenNo, 10).toString().padStart(4, '0');
             }else{
+                console.log(currentNoBUR, givenNo, 'here2')
                 incrementedByOne = (parseInt(currentNoBUR, 10)+1).toString().padStart(4, '0');
             }
 
@@ -883,27 +822,18 @@ const getOrigNumberOfCopiesBUR = async(givenNo) => {
     }
 }
 
-const updateAccount = async(req, res) => {
-    const {name, role} = req.body
-    const uid = req.user.uid
-    console.log(name, uid, role)
-    try {
-        const response = await updateUserAcc(uid, role, name)
+const getWeek = () => {
+    const date = new Date().toISOString().split('T')[0]
+    const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    const dayOfMonth = date.getDate();
+    const dayOfWeek = startOfMonth.getDay();
+    const weekNum = Math.ceil((dayOfMonth + dayOfWeek) / 7)
 
-        const uname = response.customClaims.dispName
-        const urole = response.customClaims.role
-        const userid = response.uid
-        const email = response.email
+    return `week${weekNum}`;
 
-        res.status(200).json({ success: true, role: urole, name: uname, uid: userid, uemail: email})
-    } catch (error) {
-        console.log(`Error updating ${error}`)
-        res.status(500).json({ success: false, error: error.message });
-    }
 }
 
 module.exports = {
-    operatorInput, 
     opReturnDocu, 
     transferDocument,
     getPermission,
@@ -915,6 +845,5 @@ module.exports = {
     updateFieldOffice,
     deleteFieldOffice,
     updateASA_ORS,
-    updateAccount,
     getBUR
 }

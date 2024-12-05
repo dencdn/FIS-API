@@ -44,7 +44,6 @@ adminRouter.post('/addTaxType', addTaxType)
 adminRouter.get('/getTaxType', getTaxType)
 adminRouter.delete('/deleteTax/:field_key', deleteTax)
 //DASHBOARD (NUMBER OF RECORDS)
-adminRouter.get('/getNumberOfRecords', getNumberOfRecords)
 
 
 module.exports = adminRouter;
