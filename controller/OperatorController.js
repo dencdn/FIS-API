@@ -21,20 +21,12 @@ const updateASA_ORS = async (req, res) => {
     const year = new Date().getFullYear();
     const month = new Date().getMonth() + 1
     let finalORS = '';
+    let ORS = ''
     if(ors){
         const lastORS = ors.split('-').pop()
-        const ORS = await getOrigNumberOfCopiesBUR(lastORS)
+        ORS = await getOrigNumberOfCopiesBUR(lastORS)
         finalORS = `501-${year}-${month}-${ORS}`
     }
-
-    let orsData = ''
-
-    const [ASANo, projectID] = asa.split('/')
-    const [ , , , DVNoCount ] = DVNo.split('-')
-    if(ors) {
-        const [ , , , BURCount ] = ors.split('-')
-        orsData = BURCount
-    } 
 
     const dvData = {
         ORSBURS: finalORS,
@@ -44,7 +36,7 @@ const updateASA_ORS = async (req, res) => {
     fieldOffice = {
         date,
         DVNoCount, 
-        orsData, 
+        ORS, 
         payee, 
         particulars, 
         amount

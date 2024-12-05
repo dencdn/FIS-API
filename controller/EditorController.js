@@ -203,7 +203,7 @@ const updateDV = async(req, res) => {
     const payeeData = req.body.payee_data
 
 
-    const dateTimeCollection = getDateTime;
+    const dateTimeCollection = getDateTime();
     const dvData = {
         ...payeeData,
         birParticular,
