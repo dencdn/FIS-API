@@ -39,7 +39,7 @@ const updateASA_ORS = async (req, res) => {
     fieldOffice = {
         date,
         DVNoCount, 
-        ORS, 
+        orsData: ORS, 
         payee, 
         particulars, 
         amount
