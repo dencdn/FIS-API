@@ -28,6 +28,7 @@ const updateASA_ORS = async (req, res) => {
         finalORS = `501-${year}-${month}-${ORS}`
     }
 
+    const [ASANo, projectID] = asa.split('/')
     const [ , , , DVNoCount ] = DVNo.split('-')
 
     const dvData = {
