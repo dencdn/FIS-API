@@ -30,6 +30,7 @@ const server = http.createServer(app) //create an instance of http server
 app.use(cors({
   origin: process.env.CLIENT_URL,
   methods: ['GET', 'POST', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }))
 
@@ -38,6 +39,8 @@ app.use(express.json())
 app.use((req, res, next) => {
    next() 
 })
+
+app.options('*', cors());
 
 app.get('/logout', (req, res) => {
   res.clearCookie('token', { path: '/' });
