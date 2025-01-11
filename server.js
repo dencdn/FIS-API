@@ -3,6 +3,10 @@ require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
 const cookieParser = require('cookie-parser');
+const {admin, db, rtdb}  = require('./config/firebase');
+const http = require('http');
+
+
 const {updateControlBook} = require('./tasks/monthlyUpdate')
 const {updateASADue} = require('./tasks/dailyUpdate')
 const {updateWeeklyRecords} = require('./tasks/weeklyUpdate')
@@ -17,12 +21,15 @@ const SuperAdminRoutes = require('./routes/SuperAdminRoutes')
 const AdminAndHeadRoutes = require('./routes/Admin_Head_routes')
 const EditorOperatorRouter = require('./routes/editorOperatorRoutes')
 
+const initializeSockets = require('./sockets/index');
+const { getUsers } = require('./controller/MultiAccess/Functions')
+
 const app = express()
+const server = http.createServer(app) //create an instance of http server
 
 app.use(cors({
-  origin: 'https://niafis.com',
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'], 
+  origin: process.env.CLIENT_URL,
+  methods: ['GET', 'POST', 'DELETE', 'PATCH'],
   credentials: true
 }))
 
@@ -32,7 +39,10 @@ app.use((req, res, next) => {
    next() 
 })
 
-app.options('*', cors());
+app.get('/logout', (req, res) => {
+  res.clearCookie('token', { path: '/' });
+  res.status(200).json({message: "cleared"})
+})
 
 app.get('/status', (req, res) => {
   res.status(200).json({
@@ -41,16 +51,6 @@ app.get('/status', (req, res) => {
       timestamp: new Date().toISOString()
   });
 });
-
-app.get('/logout', (req, res) => {
-  res.clearCookie('token', {
-    httpOnly: true,  
-    secure: true,  
-    sameSite: 'None',
-    path: '/', 
-    });
-  res.status(200).json({message: "cleared"})
-})
 
 updateControlBook()
 updateASADue()
@@ -68,7 +68,12 @@ app.use('/superadmin', SuperAdminRoutes)
 app.use('/adminhead', AdminAndHeadRoutes)
 app.use('/editoroperator', EditorOperatorRouter)
 
+initializeSockets(server);
+
 const PORT = process.env.PORT;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
+  // instead of app.listen use the server instance
+  // app is a shortcut provided by the Express
+  // serve isntance requires to bind websocket
   console.log(`Server running on port ${PORT}`);
 });

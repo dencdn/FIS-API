@@ -1,10 +1,12 @@
 const {admin, db, rtdb}  = require('../../config/firebase');
+const { encryptObj } = require('../functions');
 
 const addComments = async(DV, comment) => {
     try {
         const docref = db.collection('records').doc(DV)
+        const encryptedComment = encryptObj(comment, {allKeys: true})
         await docref.update({
-            comments: admin.firestore.FieldValue.arrayUnion(comment)
+            comments: admin.firestore.FieldValue.arrayUnion(encryptedComment)
         })
     } catch (error) {
        console.log('Error adding comment: ', error) 

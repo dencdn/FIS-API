@@ -1,6 +1,8 @@
 const {admin, db, rtdb}  = require('../config/firebase');
 const { doc } = require('firebase/firestore')
 
+const { encryptObj } = require('./functions');
+
 const { 
     addComments,
     setNotification,
@@ -25,6 +27,8 @@ const formatDate = (rawDate) => {
 
     return formattedDate;
   };
+
+
 const createDV = async (req, res) => {
     const {payee, TIN, address, fund, date, DV, MOP, specifiedMOP, origNumber, template, RC, NF_name, NF_office,TT_tax, TT_formula1, TT_formula2, TT_cost, accCategory, accTitle, accCode,optionalAmount, amount, particular} = req.body.payee_data;
     const {birParticular} = req.body.bir_data
@@ -32,7 +36,7 @@ const createDV = async (req, res) => {
     
     const DVnoKey = `DVno${fund.replace(/\s/g, '')}`
     const finalizeDVNo = await getOrigNumberOfCopies(DVnoKey, origNumber, DV, template)
-    const DVKey = `${finalizeDVNo}|${fund.replace(/\s/g, '')}`
+    const DVKey = `${finalizeDVNo.DV}|${fund.replace(/\s/g, '')}`
 
     const dateTimeCollection = getDateTime();
     const createdByDetails = `${createdBy} at ${dateTimeCollection}`
@@ -42,48 +46,52 @@ const createDV = async (req, res) => {
     newDvData = {
         ...payeeData,
         date: formatDate(date),
-        DV: finalizeDVNo,
+        DV: finalizeDVNo.DV,
         DVKey: DVKey,
+        DVBIR: finalizeDVNo.BIR,
         birParticular: birParticular.trim(),
         createdAt: dateTimeCollection,
         createdBy: createdByDetails,
         status: 'Drafting',
     }
 
-    dvData = {
-        //payee data
-        payee: payee.trim(), 
-        TIN: TIN, 
-        address: address,
-        fund: fund,
-        date: formatDate(date), 
-        DV: finalizeDVNo,
-        DVKey: DVKey, 
-        modeOfPayment: MOP,
-        specifiedMOP: specifiedMOP,
-        RC: RC,
-        NF_name: NF_name,
-        NF_office: NF_office,
-        TT_tax: TT_tax,
-        TT_formula1: TT_formula1,
-        TT_formula2: TT_formula2,
-        TT_cost: TT_cost,
-        accCategory: accCategory, 
-        accTitle: accTitle,
-        accCode: accCode,
-        optionalAmount: optionalAmount, 
-        amount: amount, 
-        particular: particular.trim(),
-        //BIR data
-        birParticular: birParticular.trim(),
-        //other data
-        createdAt: dateTimeCollection,
-        createdBy: createdByDetails,
-        status: 'Drafting',
-        //open for necessary data needed
-    }
+    const keysNotToEncrypt = ['status', 'DV', 'DVKey', 'template', 'origNumber']
+    const encryptedDvData = encryptObj(newDvData, {keysNotToEncrypt})
+
+    // dvData = {
+    //     //payee data
+    //     payee: payee.trim(), 
+    //     TIN: TIN, 
+    //     address: address,
+    //     fund: fund,
+    //     date: formatDate(date), 
+    //     DV: finalizeDVNo,
+    //     DVKey: DVKey, 
+    //     modeOfPayment: MOP,
+    //     specifiedMOP: specifiedMOP,
+    //     RC: RC,
+    //     NF_name: NF_name,
+    //     NF_office: NF_office,
+    //     TT_tax: TT_tax,
+    //     TT_formula1: TT_formula1,
+    //     TT_formula2: TT_formula2,
+    //     TT_cost: TT_cost,
+    //     accCategory: accCategory, 
+    //     accTitle: accTitle,
+    //     accCode: accCode,
+    //     optionalAmount: optionalAmount, 
+    //     amount: amount, 
+    //     particular: particular.trim(),
+    //     //BIR data
+    //     birParticular: birParticular.trim(),
+    //     //other data
+    //     createdAt: dateTimeCollection,
+    //     createdBy: createdByDetails,
+    //     status: 'Drafting',
+    //     //open for necessary data needed
+    // }
     try{
-        await db.collection('records').doc(newDvData.DVKey).set(newDvData);
+        await db.collection('records').doc(encryptedDvData.DVKey).set(encryptedDvData);
 
         // addOnCategoryPerMonth(amount, optionalAmount, accCategory, date)
         // addOnClusterAmount(amount, fund, date)
@@ -265,7 +273,7 @@ const getNumberOfCopies = async (req, res) => {
         const day = today.getDate();
         const docRef = db.collection('NumberOfRecords').doc(year.toString());
         const doc = await docRef.get()
-        if ((month === 1 && day === 1) || !doc.exists) {
+        if (!doc.exists) {
             const data = {
                 DVno501CARP: '0000',
                 DVno501COB: '0000',
@@ -301,18 +309,25 @@ const getOrigNumberOfCopies = async(dvno, givenNo, DV, template) => {
             const data = doc.data();
             const currentNoOfCopies = data[dvno] || givenNo
 
-            let incrementedByOne;
-            if (currentNoOfCopies === givenNo) {
-                incrementedByOne = (parseInt(givenNo, 10) + 1).toString().padStart(4, '0');
-            } else {
-                incrementedByOne = (parseInt(currentNoOfCopies, 10) + 1).toString().padStart(4, '0');
-            }
+            // let incrementedByTwo;
+            // if (currentNoOfCopies === givenNo) {
+            //     incrementedByTwo = (parseInt(givenNo, 10) + 2).toString().padStart(4, '0');
+            // } else {
+            //     incrementedByTwo = (parseInt(currentNoOfCopies, 10) + 2).toString().padStart(4, '0');
+            // }
+            // const minusOne = (parseInt(input, 10) - 1).toString().padStart(4, '0');
+            const incrementedByTwo = (parseInt(currentNoOfCopies, 10) + 2).toString().padStart(4, '0');
+            const incrementedByOne = (parseInt(currentNoOfCopies, 10) + 1).toString().padStart(4, '0');
 
             transaction.update(docRef, {
-                [dvno]: incrementedByOne
+                [dvno]: incrementedByTwo
             });
+            const dvData = {
+                DV: `${template}${incrementedByOne}`,
+                BIR: `${template}${incrementedByTwo}`
+            }
 
-            return `${template}${incrementedByOne}`;
+            return dvData;
         })
         
     }catch(error){

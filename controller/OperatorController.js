@@ -10,6 +10,118 @@ const {
     getUsers
 } = require('./MultiAccess/Functions');
 const { messaging } = require('firebase-admin');
+const { parse } = require('dotenv');
+
+const updateASAORS = async (req, res) => {
+    try{
+        console.log(req.body)
+        const newlyASA = req.body.update
+        const previousASA_test = req.body.previousASA
+        const {id} = req.params
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth() + 1
+
+        
+
+        //handle control books new amount per control book
+        // const ASA_amount = req.body.controlBooks
+        // batch_HandleControlBook
+
+        const asa_test = req.body.data.asa
+        const {obj1: asa, obj2: previousASA} = theDifference(asa_test, previousASA_test)
+        console.log(`asa:`, asa)
+        console.log(`previousASA: `, previousASA)
+        const ASA_amount = Object.entries(asa).reduce((acc, [key, value]) => {
+            const newKey = key.split('/')[0];
+            acc[newKey] = (acc[newKey] || 0) + value;
+            return acc
+        }, {})
+        console.log(Boolean(previousASA))
+        if((!asa || Object.keys(asa).length === 0) && (!previousASA || Object.keys(previousASA).length === 0)){
+            console.log('asa and prevASA is same')
+            return res.status(200).json({ message: "No need to update" });
+        }
+        const asaEntries = Object.entries(asa).map(([key, amount]) => {
+            // console.log(key)
+            const [ASANo, projectID] = key.split('/');
+
+            return {
+                ASANo,
+                projectID,
+                amount
+            }
+        })
+
+        
+        const ors = req.body?.data?.ors ? req.body.data.ors.split('-') : [];
+        const DV = req.body.DV
+        const DVNoKey = DV?.DVNo ? DV.DVNo.split('-') : [];
+        const fieldOfficeData = {
+            date: DV.date,
+            DVNoCount: DVNoKey,
+            orsData: ors.length > 0 ? [ors.length - 1] : '',
+            payee: DV.payee,
+            particulars: DV.particulars,
+            //amount
+        }
+        // console.log(asaEntries)
+        //batch_handlefieldOffices
+
+        let finalORS = ''
+        const dvData = {ASA: asa}
+        if(newlyASA){ 
+            const ORS = await getOrigNumberOfCopiesBUR(ors)
+            finalORS = `501-${year}-${month}-${ORS}`
+            dvData.ORSBURS = finalORS
+        }
+
+        if(!newlyASA){
+
+            const previousASA_amount = Object.entries(previousASA).reduce((acc, [key, value]) => {
+                const newKey = key.split('/')[0];
+                acc[newKey] = value;
+                return acc
+            }, {})
+
+            const prevAsaEntries = Object.entries(previousASA).map(([key, amount]) => {
+                // console.log(key)
+                const [ASANo, projectID] = key.split('/');
+    
+                return {
+                    ASANo,
+                    projectID,
+                    amount
+                }
+            })
+
+            //previous ASA
+            await batch_HandleControlBook(previousASA_amount, 'subtract')
+            await batch_handlefieldOffices(prevAsaEntries, DVNoKey[DVNoKey.length-1], fieldOfficeData, 'subtract');
+
+            //updated ASA
+            await batch_HandleControlBook(ASA_amount)
+            await batch_handlefieldOffices(asaEntries, DVNoKey[DVNoKey.length-1], fieldOfficeData);
+        }else{
+            //new ASA
+            
+            const ASA_amount = Object.entries(asa).reduce((acc, [key, value]) => {
+                const newKey = key.split('/')[0];
+                acc[newKey] = (acc[newKey] || 0) + value;
+                return acc
+            }, {})
+
+            await batch_HandleControlBook(ASA_amount) //comment this first
+            await batch_handlefieldOffices(asaEntries, DVNoKey[DVNoKey.length-1], fieldOfficeData);
+        }
+
+        const docref = db.collection('records').doc(id)
+        await docref.update(dvData)
+        res.status(200).json('Successfully Updated')
+    }catch(err){
+        res.status(500)
+        console.log(`error on new updateASAORS (operator controller): ${err}`)
+    }
+}
 
 const updateASA_ORS = async (req, res) => {
     const { ors, asa } = req.body.data
@@ -17,19 +129,23 @@ const updateASA_ORS = async (req, res) => {
     const { date, DVNo, payee, particulars, amount } = req.body.DV
     const previousASA = req.body.previousASA
     const {id} = req.params
-
     const year = new Date().getFullYear();
     const month = new Date().getMonth() + 1
     let finalORS = '';
-    let ORS = ''
     if(ors){
         const lastORS = ors.split('-').pop()
-        ORS = await getOrigNumberOfCopiesBUR(lastORS)
+        const ORS = await getOrigNumberOfCopiesBUR(lastORS)
         finalORS = `501-${year}-${month}-${ORS}`
     }
 
+    let orsData = ''
+
     const [ASANo, projectID] = asa.split('/')
     const [ , , , DVNoCount ] = DVNo.split('-')
+    if(ors) {
+        const [ , , , BURCount ] = ors.split('-')
+        orsData = BURCount
+    } 
 
     const dvData = {
         ORSBURS: finalORS,
@@ -39,14 +155,15 @@ const updateASA_ORS = async (req, res) => {
     fieldOffice = {
         date,
         DVNoCount, 
-        orsData: ORS, 
+        orsData, 
         payee, 
         particulars, 
         amount
     } 
 
     try{
-        if(previousASA) {
+        //UPDATING THE ASA
+        if(previousASA) { //NEXT
             const [prevASA, prevFO] = previousASA.split('/')
             const docRef = db.collection('ControlBook').doc(prevASA)
                             .collection('FieldOffices').doc(prevFO)
@@ -87,49 +204,51 @@ const updateASA_ORS = async (req, res) => {
 
                 await docRef.delete();
 
-                const ref = db.collection('ControlBook').doc(ASANo).collection('FieldOffices').doc(projectID)
-                const project = await ref.get()
+                if(ASANo){
+                    const ref = db.collection('ControlBook').doc(ASANo).collection('FieldOffices').doc(projectID)
+                    const project = await ref.get()
 
-                if(project.exists){
-                    await handleControlBook(ASANo, amount)
-                    const projectdata = project.data()
-                    const parseAmount = parseFloat(amount)
-                    const RO = parseFloat(projectdata.RO)
-                    const FO = parseFloat(projectdata.FO)
-                    const thisMonthFO = parseFloat(projectdata.thisMonthFO)
-                    const weekFO = parseFloat(projectdata.weekFO)
+                    if(project.exists){
+                        await handleControlBook(ASANo, amount)
+                        const projectdata = project.data()
+                        const parseAmount = parseFloat(amount)
+                        const RO = parseFloat(projectdata.RO)
+                        const FO = parseFloat(projectdata.FO)
+                        const thisMonthFO = parseFloat(projectdata.thisMonthFO)
+                        const weekFO = parseFloat(projectdata.weekFO)
 
-                    const updatedRO = RO - parseAmount 
-                    const updatedFO = FO + parseAmount
-                    const updatedThisMonthFO = thisMonthFO + parseAmount
-                    const updatedThisMonthRO = updatedRO
-                    const updatedWeekFO = weekFO + parseAmount
+                        const updatedRO = RO - parseAmount 
+                        const updatedFO = FO + parseAmount
+                        const updatedThisMonthFO = thisMonthFO + parseAmount
+                        const updatedThisMonthRO = updatedRO
+                        const updatedWeekFO = weekFO + parseAmount
 
-                    if(updatedRO < 0){
-                        throw Error("Insufficient amount.")
+                        if(updatedRO < 0){
+                            throw Error("Insufficient amount.")
+                        }
+                        await ref.update({
+                            RO: updatedRO,
+                            FO: updatedFO,
+                            thisMonthFO: updatedThisMonthFO, 
+                            thisMonthRO: updatedThisMonthRO,
+                            weekFO: updatedWeekFO,
+                            weekRO: updatedRO
+                        });
+                        await handleFormDataRemainingAmount_RO(ASANo, projectID, updatedRO)
                     }
-                    await ref.update({
-                        RO: updatedRO,
-                        FO: updatedFO,
-                        thisMonthFO: updatedThisMonthFO, 
-                        thisMonthRO: updatedThisMonthRO,
-                        weekFO: updatedWeekFO,
-                        weekRO: updatedRO
-                    });
-                    await handleFormDataRemainingAmount_RO(ASANo, projectID, updatedRO)
-                }
 
-                await db.collection('ControlBook').doc(ASANo)
-                    .collection('FieldOffices').doc(projectID)
-                    .collection('DV').doc(`${DVNoCount}|${amount}`).set(fieldOffice)
+                    await db.collection('ControlBook').doc(ASANo)
+                        .collection('FieldOffices').doc(projectID)
+                        .collection('DV').doc(`${DVNoCount}|${amount}`).set(fieldOffice)
+                }
                 
 
             } else {
                 console.log('No document found')
             }
-        } else {
+        } else { //DONE
 
-            await handleControlBook(ASANo, amount)
+            await handleControlBook(ASANo, amount) //DONE
 
             const docRef = db.collection('ControlBook').doc(ASANo).collection('FieldOffices').doc(projectID)
             const project = await docRef.get()
@@ -162,12 +281,13 @@ const updateASA_ORS = async (req, res) => {
                 await handleFormDataRemainingAmount_RO(ASANo, projectID, updatedRO)
             }
 
-
+            //DONE
             await db.collection('ControlBook').doc(ASANo)
                 .collection('FieldOffices').doc(projectID)
                 .collection('DV').doc(`${DVNoCount}|${amount}`).set(fieldOffice)
         }
 
+        //DONE
         const docref = db.collection('records').doc(id)
         await docref.update(dvData)
         res.status(200).json('Successfully Updated')
@@ -175,7 +295,84 @@ const updateASA_ORS = async (req, res) => {
         console.log('error on updatingASA_ORS: (OPERATORCONTROLLER)', error)
     }
 
-} 
+}
+
+const batch_handlefieldOffices = async (updates, DVNoCount, fieldOfficeData, operation='add') => {
+    const batch = db.batch();
+    
+    try{
+        for (const { ASANo, projectID, amount } of updates) {
+            const docRef = db.collection('ControlBook').doc(ASANo).collection('FieldOffices').doc(projectID);
+            const project = await docRef.get();
+    
+            if (project.exists) {
+                const parseAmount = parseFloat(amount);
+                const projectdata = project.data();
+    
+                const RO = parseFloat(projectdata.RO || 0);
+                const FO = parseFloat(projectdata.FO || 0);
+                const thisMonthFO = parseFloat(projectdata.thisMonthFO || 0);
+                const weekFO = parseFloat(projectdata.weekFO || 0);
+    
+                let updatedRO, updatedFO, updatedThisMonthFO, updatedThisMonthRO, updatedWeekFO
+                if(operation === 'add'){
+                    updatedRO = RO - parseAmount;
+                    updatedFO = FO + parseAmount;
+                    updatedThisMonthFO = thisMonthFO + parseAmount;
+                    updatedThisMonthRO = updatedRO;
+                    updatedWeekFO = weekFO + parseAmount;
+                }else{
+                    updatedRO = RO + parseAmount;
+                    updatedFO = FO - parseAmount;
+                    updatedThisMonthFO = thisMonthFO - parseAmount;
+                    updatedThisMonthRO = updatedRO;
+                    updatedWeekFO = weekFO - parseAmount;
+                }
+    
+                if (updatedRO < 0) {
+                    console.error(`Insufficient amount for ASANo: ${ASANo}, projectID: ${projectID}`);
+                    continue; // Skip this document and continue with others
+                }
+    
+                // Add updates to the batch
+                batch.update(docRef, {
+                    RO: updatedRO,
+                    FO: updatedFO,
+                    thisMonthFO: updatedThisMonthFO,
+                    thisMonthRO: updatedThisMonthRO,
+                    weekFO: updatedWeekFO,
+                    weekRO: updatedRO,
+                });
+
+                const DVDocRef = db.collection('ControlBook')
+                    .doc(ASANo)
+                    .collection('FieldOffices')
+                    .doc(projectID)
+                    .collection('DV')
+                    .doc(`${DVNoCount}|${amount}`);
+                
+                if(operation == 'add'){
+                    const fieldOfficed = {
+                        ...fieldOfficeData,
+                        amount: amount
+                    }
+    
+                    batch.set(DVDocRef, fieldOfficed);
+                }else{
+                    batch.delete(DVDocRef)
+                }
+    
+                // Optionally handle remaining amount separately
+                await batch_handleFormDataRemainingAmount_RO(batch, ASANo, projectID, updatedRO);
+            } else {
+                console.warn(`Document not found for ASANo: ${ASANo}, projectID: ${projectID}`);
+            }
+        }
+        await batch.commit()
+    }catch(err){
+        console.error('Error executing batch updates:', err);
+    }
+}
 
 const getBUR = async(req, res) => {
     try{
@@ -277,6 +474,84 @@ const handleFormDataRemainingAmount_RO = async (controBookID, projectID, newAmou
     }catch(err){
         console.error('Error updating amount:', err);
     }
+}
+
+const batch_handleFormDataRemainingAmount_RO = async (batch, controBookID, projectID, newAmount) => {
+    try{
+        const docRef = db.collection('formData').doc('ControlBook')
+        const doc = await docRef.get()
+
+        if(!doc.exists){
+            console.log('Document not found')
+            return
+        }
+
+        const data = doc.data()
+        if (!data[controBookID] || !Array.isArray(data[controBookID])) {
+            console.error(`controBookID ${controBookID} not found or is not an array`);
+            return;
+        }
+
+        const updatedArray = data[controBookID].map((item) => {
+            if (item.projectID === projectID) {
+                return { ...item, RO: newAmount };
+            }
+            return item; 
+        });
+
+        batch.update(docRef, {
+            [controBookID]: updatedArray,
+        })
+    }catch(err){
+        console.error('Error updating amount:', err);
+    }
+}
+
+const batch_HandleControlBook = async (updates, operation='add') => {
+    const batch = db.batch();
+    console.log(updates, operation)
+    for (const [ASANo, amount] of Object.entries(updates)) {
+        const controlBookRef = db.collection('ControlBook').doc(ASANo);
+        const controlBook = await controlBookRef.get();
+
+        if (controlBook.exists) {
+            const controlBookData = controlBook.data();
+            const parseAmount = parseFloat(amount);
+            const totalRO = parseFloat(controlBookData.RO);
+            const totalFO = parseFloat(controlBookData.FO);
+            const thisMonthFOValue = parseFloat(controlBookData.thisMonthFO || 0);
+            const weekFO = parseFloat(controlBookData.weekFO);
+
+            let updatedRO, updateFO, updatedThisMonthFO, updatedThisMonthRO, updatedWeekFO;
+
+            if (operation === 'add') {
+                updatedRO = totalRO - parseAmount;
+                updateFO = totalFO + parseAmount;
+                updatedThisMonthFO = thisMonthFOValue + parseAmount;
+                updatedThisMonthRO = updatedRO;
+                updatedWeekFO = weekFO + parseAmount;
+            } else {
+                updatedRO = totalRO + parseAmount;
+                updateFO = totalFO - parseAmount;
+                updatedThisMonthFO = thisMonthFOValue - parseAmount;
+                updatedThisMonthRO = updatedRO;
+                // updatedWeekFO = (weekFO - parseAmount) <= 0 ? weekFO - parseAmount : 0;
+                updatedWeekFO = weekFO - parseAmount
+            }
+
+            batch.update(controlBookRef, {
+                RO: updatedRO,
+                FO: updateFO,
+                thisMonthFO: updatedThisMonthFO,
+                thisMonthRO: updatedThisMonthRO,
+                weekFO: updatedWeekFO,
+                weekRO: updatedRO,
+            });
+        } else {
+            console.log(`Document ${ASANo} does not exist.`);
+        }
+    }
+    await batch.commit()
 }
 
 const handleControlBook = async (ASANo, amount, operation='add') => {
@@ -684,7 +959,7 @@ const appendDataToSheet = async (req, res) => {
 
   const deleteControlBook = async(req, res) => {
     const { id } = req.params
-
+    console.log(`deleting id: ${id}`)
     try{
         await db.collection('ControlBook').doc(id).delete();
         await db.collection('formData').doc('ControlBook').update({
@@ -702,13 +977,16 @@ const updateFieldOffice = async(req, res) => {
     const { id } = req.params
     const [ASANo, docId] = id.split('!')
     const fieldOfficeData = req.body.data
+    const LeftBudget = req.body.leftBudget
     const {RO, projectID, projectName} = req.body.prevData
 
-    const dateTimeCollection = getDateTime;
-
+    const dateTimeCollection = getDateTime();
+    // console.log(req.body)
     const data = {
         ...fieldOfficeData,
-        updatedAt: dateTimeCollection
+        updatedAt: dateTimeCollection,
+        leftBudget: fieldOfficeData.ASA,
+        RO: fieldOfficeData.ASA
     }
 
     formData = {
@@ -716,8 +994,20 @@ const updateFieldOffice = async(req, res) => {
         projectID: projectID,
         projectName: projectName
     }
+    console.log(fieldOfficeData)
 
+    const updatedFieldOfficeData = {
+        RO: fieldOfficeData.ASA,
+        projectID: projectID,
+        projectName: fieldOfficeData.projectName
+    }
+    // FORMULA :   newLeftBudget = LeftBudget + RO - desireUpdate
+    //             newLeftBudget = Latest + Current - update
+    const updatedLeftBudget = parseFloat(LeftBudget) + parseFloat(RO) - parseFloat(fieldOfficeData.ASA)
+    console.log(`${updatedLeftBudget} = ${LeftBudget} + ${RO} - ${fieldOfficeData.ASA}`)
     try {
+        const controlBookRef = db.collection('ControlBook').doc(ASANo)
+        controlBookRef.update({leftBudget: updatedLeftBudget})
         const docRef = db.collection('ControlBook').doc(ASANo).collection('FieldOffices').doc(docId)
         await docRef.update(data)
         const docref = db.collection('formData').doc('ControlBook')
@@ -725,7 +1015,7 @@ const updateFieldOffice = async(req, res) => {
             [ASANo]: admin.firestore.FieldValue.arrayRemove(formData)
         })
         await docref.update({
-            [ASANo]: admin.firestore.FieldValue.arrayUnion(fieldOfficeData)
+            [ASANo]: admin.firestore.FieldValue.arrayUnion(updatedFieldOfficeData)
         })
         res.status(200).json({message: 'Field Office Successfully Updated'})
     } catch (error) {
@@ -739,7 +1029,6 @@ const updateFieldOffice = async(req, res) => {
 const deleteFieldOffice = async(req, res) => {
     const { id } = req.params
     const [ASANo, docId, projectName, RO, totalASA] = id.split('!')
-
     const data = {
         RO: RO,
         projectID: docId,
@@ -828,6 +1117,30 @@ const getWeek = () => {
 
 }
 
+const theDifference = (obj1 = {}, obj2 = {}) => {
+    const diff1 = {};
+    const diff2 = {};
+
+    if(Object.keys(obj1).length === 0 || Object.keys(obj2).length === 0){
+        return {obj1: obj1, obj2: obj2}
+    }
+
+    const allKeys = new Set([...Object.keys(obj1), ...Object.keys(obj2)]);
+
+    allKeys.forEach(key => {
+        if (obj1[key] !== obj2[key]) {
+            if (key in obj1) {
+                diff1[key] = obj1[key];
+            }
+            if (key in obj2) {
+                diff2[key] = obj2[key];
+            }
+        }
+    });
+
+    return { obj1: diff1, obj2: diff2 };
+}
+
 module.exports = {
     opReturnDocu, 
     transferDocument,
@@ -840,5 +1153,6 @@ module.exports = {
     updateFieldOffice,
     deleteFieldOffice,
     updateASA_ORS,
-    getBUR
+    getBUR,
+    updateASAORS
 }

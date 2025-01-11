@@ -16,11 +16,11 @@ const {
     updateFieldOffice,
     deleteFieldOffice,
     updateASA_ORS,
-    getBUR
+    getBUR,
+    updateASAORS
 } = require('../controller/OperatorController');
 
 OperatorRouter.use(setRole([3]))
-
 OperatorRouter.post('/return_record', opReturnDocu)
 OperatorRouter.post('/transferDocu', transferDocument)
 OperatorRouter.get('/getPermission', getPermission)
@@ -31,7 +31,8 @@ OperatorRouter.patch('/updateControlBook/:id', updateControlBook)
 OperatorRouter.delete('/deleteControlBook/:id', deleteControlBook)
 OperatorRouter.patch('/updateFieldOffice/:id', updateFieldOffice)
 OperatorRouter.delete('/deleteFieldOffice/:id', deleteFieldOffice)
-OperatorRouter.patch('/updateASA_ORS/:id', updateASA_ORS)
+// OperatorRouter.patch('/updateASA_ORS/:id', updateASA_ORS)
+OperatorRouter.patch('/updateASA_ORS/:id', updateASAORS)
 OperatorRouter.get('/getBUR', getBUR)
 
 module.exports = OperatorRouter

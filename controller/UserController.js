@@ -17,7 +17,8 @@ const login = async(req, res) => {
         res.cookie('token', token, {
             httpOnly: true,  
             secure: true,  
-            sameSite: 'None' 
+            sameSite: 'None',
+            maxAge: 60 * 60 * 1000 
         });
         res.status(200).json({ success: true, role: role, name: name, uid: uid, uemail: email, firstTimeLogin: user.data().firstTimeLogin});
     }catch(error){
@@ -40,7 +41,8 @@ const refreshToken = async(req, res) => {
         res.cookie('token', token, {
             httpOnly: true,  
             secure: true,  
-            sameSite: 'None' 
+            sameSite: 'None',
+            maxAge: 60 * 60 * 1000  
         });
         res.status(200).json({ success: true, role: role, name: name, uid: uid, uemail: email, firstTimeLogin: user.data().firstTimeLogin});
     }catch(error){
