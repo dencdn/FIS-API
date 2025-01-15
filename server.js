@@ -43,7 +43,12 @@ app.use((req, res, next) => {
 app.options('*', cors());
 
 app.get('/logout', (req, res) => {
-  res.clearCookie('token', { path: '/' });
+  res.clearCookie('token', { 
+    path: '/', 
+    httpOnly: true, 
+    secure: true, 
+    sameSite: 'None'
+   });
   res.status(200).json({message: "cleared"})
 })
 

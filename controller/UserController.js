@@ -1,5 +1,6 @@
 const {admin, db}  = require('../config/firebase')
 const login = async(req, res) => {
+    //still the token on frontend never gets deleted
     try{
         
         const role = req.user.role
@@ -18,7 +19,7 @@ const login = async(req, res) => {
             httpOnly: true,  
             secure: true,  
             sameSite: 'None',
-            maxAge: 60 * 60 * 1000 
+            //deleted max age
         });
         res.status(200).json({ success: true, role: role, name: name, uid: uid, uemail: email, firstTimeLogin: user.data().firstTimeLogin});
     }catch(error){
@@ -42,7 +43,7 @@ const refreshToken = async(req, res) => {
             httpOnly: true,  
             secure: true,  
             sameSite: 'None',
-            maxAge: 60 * 60 * 1000  
+            //deleted max age
         });
         res.status(200).json({ success: true, role: role, name: name, uid: uid, uemail: email, firstTimeLogin: user.data().firstTimeLogin});
     }catch(error){
