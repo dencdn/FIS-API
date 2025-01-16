@@ -13,8 +13,8 @@ const headSocket = (socket, io) => {
         console.log('permission data: ',perm)
 
         const status = perm?.permission
-            ? ['Approved', 'Under Review', 'For Approval']
-            : ['Under Review'];
+            ? ['Approved', 'Under Review', 'For Approval', 'Returned|2']
+            : ['Under Review', 'Returned|2'];
 
         if (collectionUnsubscribe) {
             console.log('Updating Firestore collection listener...');

@@ -21,7 +21,8 @@ const {getAllLogs,
        approveDV,
        getNumberOfRecords,
        downloadDV,
-       downloadGSIS
+       downloadGSIS,
+       returnRecordTo
         } = require('../controller/AdminController');
 
 adminRouter.use(setRole([1]))
@@ -46,6 +47,7 @@ adminRouter.delete('/deleteNameAndOffice/:field_key', deleteNameAndOffice)
 adminRouter.post('/addTaxType', addTaxType)
 adminRouter.get('/getTaxType', getTaxType)
 adminRouter.delete('/deleteTax/:field_key', deleteTax)
+adminRouter.post('/returnRecords', returnRecordTo)
 //DASHBOARD (NUMBER OF RECORDS)
 
 

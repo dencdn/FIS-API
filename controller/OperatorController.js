@@ -893,6 +893,7 @@ const appendDataToSheet = async (req, res) => {
         week3RO: 0,
         week4RO: 0,
         week5RO: 0,
+        tabStatus: '',
     }
 
     const formData = {
