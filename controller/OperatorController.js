@@ -21,14 +21,13 @@ const updateASAORS = async (req, res) => {
         const year = new Date().getFullYear();
         const month = new Date().getMonth() + 1
 
-        
 
         //handle control books new amount per control book
         // const ASA_amount = req.body.controlBooks
         // batch_HandleControlBook
 
         const asa_test = req.body.data.asa
-        const {obj1: asa, obj2: previousASA} = theDifference(asa_test, previousASA_test)
+        const {obj1: asa, obj2: previousASA} = theDifference(asa_test, previousASA_test, newlyASA)
         console.log(`asa:`, asa)
         console.log(`previousASA: `, previousASA)
         const ASA_amount = Object.entries(asa).reduce((acc, [key, value]) => {
@@ -37,7 +36,7 @@ const updateASAORS = async (req, res) => {
             return acc
         }, {})
         console.log(Boolean(previousASA))
-        if((!asa || Object.keys(asa).length === 0) && (!previousASA || Object.keys(previousASA).length === 0)){
+        if(((!asa || Object.keys(asa).length === 0) && (!previousASA || Object.keys(previousASA).length === 0)) && !newlyASA){
             console.log('asa and prevASA is same')
             return res.status(200).json({ message: "No need to update" });
         }
@@ -66,7 +65,7 @@ const updateASAORS = async (req, res) => {
         }
         // console.log(asaEntries)
         //batch_handlefieldOffices
-
+        
         let finalORS = ''
         const dvData = {ASA: asa}
         if(newlyASA){ 
@@ -810,16 +809,17 @@ const appendDataToSheet = async (req, res) => {
   }
 
   const addControlBook = async(req, res) => {
-    const { ASANo, date, SARONo, TotalASA, description, endDate } = req.body.data
+    const { ASANo, date, SARONo, TotalASA, fundCluster, description, endDate } = req.body.data
 
     const dateTimeCollection = getDateTime();
-    const finalASANo = `${ASANo}|${createAcronym(description)}`
+    const finalASANo = `${ASANo}|${createAcronym(description)}!${fundCluster}`
 
     const data = {
         ASANo: finalASANo,
         DateOfAsa: date,
         SARONo: SARONo,
         TotalASA: TotalASA,
+        FundCluster: fundCluster,
         description: description,
         createdAt: dateTimeCollection,
         RO: TotalASA,
@@ -863,7 +863,7 @@ const appendDataToSheet = async (req, res) => {
   }
 
   const addNewFieldOffice = async(req, res) => {
-    const { projectName, fieldOffice, ASA } = req.body.data
+    const { projectName, fieldOffice, ASA, tabStatus } = req.body.data
     const  projectID  = req.body.projectID
     const { id } = req.params
 
@@ -893,7 +893,7 @@ const appendDataToSheet = async (req, res) => {
         week3RO: 0,
         week4RO: 0,
         week5RO: 0,
-        tabStatus: '',
+        tabStatus: tabStatus,
     }
 
     const formData = {
@@ -932,18 +932,34 @@ const appendDataToSheet = async (req, res) => {
     }
   }
 
-  const updateControlBook = async(req, res) => {
+const addTab = async(req, res) => {
+    const tabs = req.body
+    const {id} = req.params
+    try{
+        const controlBookRef = db.collection('ControlBook').doc(id)
+        await controlBookRef.update({
+            tabs: tabs
+        })
+        return res.status(200).json({ message: 'Tab added successfully' });
+    }catch(err){
+        console.log(`error on adding tab in operator controller ${err}`)
+        return res.status(500).json({ error: 'Failed to add tab. Please try again later.' });
+    }
+}
+
+const updateControlBook = async(req, res) => {
     const { id } = req.params
-    const { ASANo, date, SARONo, TotalASA, description } = req.body.data
+    const { ASANo, date, SARONo, TotalASA, fundCluster,description } = req.body.data
 
     const dateTimeCollection = getDateTime();
-    const finalASANo = `${ASANo}|${createAcronym(description)}`
+    const finalASANo = `${ASANo}|${createAcronym(description)}!${fundCluster}`
 
     const data = {
         ASANo: finalASANo,
         DateOfAsa: date,
         SARONo: SARONo,
         TotalASA: TotalASA,
+        FundCluster: fundCluster,
         description: description,
         updatedAt: dateTimeCollection
     }
@@ -956,7 +972,7 @@ const appendDataToSheet = async (req, res) => {
         console.log(`Error book: ${error}`)
         res.status(500).json({ success: false, error: error.message });
     }
-  }
+}
 
   const deleteControlBook = async(req, res) => {
     const { id } = req.params
@@ -1118,11 +1134,15 @@ const getWeek = () => {
 
 }
 
-const theDifference = (obj1 = {}, obj2 = {}) => {
+const theDifference = (obj1 = {}, obj2 = {}, needed=false) => {
     const diff1 = {};
     const diff2 = {};
 
     if(Object.keys(obj1).length === 0 || Object.keys(obj2).length === 0){
+        return {obj1: obj1, obj2: obj2}
+    }
+
+    if(needed){
         return {obj1: obj1, obj2: obj2}
     }
 
@@ -1155,5 +1175,6 @@ module.exports = {
     deleteFieldOffice,
     updateASA_ORS,
     getBUR,
-    updateASAORS
+    updateASAORS,
+    addTab
 }

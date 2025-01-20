@@ -477,6 +477,9 @@ const downloadDV = async(req, res) => {
 
     const combinedAccTitle = data.accTitle.join("\n");
     const combinedAccCode = data.accCode.join("\n");
+    console.log(Object.keys(data.ASA).join('\n').replace(/\|/g, ' ').replace(/\//g, ' ').replace(/\,/g, ' '));
+  
+    const ASA = Object.keys(data.ASA).join("\r\n").replace(/\|/g, ' ').replace(/\//g, ' ').replace(/\,/g, ' ');
 
     //payee
     workbook.sheet('Sheet1').cell("P2").value(data.fund)
@@ -489,7 +492,7 @@ const downloadDV = async(req, res) => {
     workbook.sheet('Sheet1').cell("A16").value(data.particular)
     workbook.sheet('Sheet1').cell("K17").value(data.RC)
     workbook.sheet('Sheet1').cell("Q17").value(data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
-    workbook.sheet('Sheet1').cell("C28").value(data.ASA.replace('|', ' ').replace('/', ' ').replace(',', ' '))
+    workbook.sheet('Sheet1').cell("C28").value(ASA).style("wrapText", true)
     workbook.sheet('Sheet1').cell("C25").value(data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
     workbook.sheet('Sheet1').cell("C26").value(data.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
     workbook.sheet('Sheet1').cell("E25").value(data.TT_formula1.replace(/\*/g, ' x ').replace(/\//g, ' / ').replace(/\+/g, ' + ').replace(/\-/g, ' - '))

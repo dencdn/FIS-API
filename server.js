@@ -77,7 +77,6 @@ app.use('/adminhead', AdminAndHeadRoutes)
 app.use('/editoroperator', EditorOperatorRouter)
 
 initializeSockets(server);
-
 const PORT = process.env.PORT;
 server.listen(PORT, () => {
   // instead of app.listen use the server instance
