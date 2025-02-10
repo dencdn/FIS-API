@@ -37,11 +37,7 @@ const initializeSockets = (server) => {
                 editorSocket(socket, io);
                 break;
         }
-        // userSocket(socket, io);
-        // adminSocket(socket, io);
-        // editorSocket(socket, io)
-        // operatorSocket(socket, io);
-        // headSocket(socket, io);
+        
 
         socket.on('disconnect', () => {
             console.log('User disconnected:', socket.id);
